@@ -59,7 +59,7 @@ async function startTikTok() {
     return;
   }
 
-  const connection = new TikTokLiveConnection(TIKTOK_USERNAME);
+  const connection = new TikTokLiveConnection(TIKTOK_USERNAME, {});
 
   connection.on(WebcastEvent.CONNECTED, () => {
     global.connectedToTikTok = true;
