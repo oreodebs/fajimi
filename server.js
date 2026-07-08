@@ -1,9 +1,8 @@
-require("dotenv").config();
-
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const { TikTokLiveConnection, WebcastEvent } = require("tiktok-live-connector");
+import "dotenv/config";
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import { TikTokLiveConnection, WebcastEvent } from "tiktok-live-connector";
 
 const PORT = process.env.PORT || 3000;
 const TIKTOK_USERNAME = (process.env.TIKTOK_USERNAME || "").replace("@", "").trim();
@@ -14,36 +13,43 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
+let connectedToTikTok = false;
+
 app.use(express.static("public"));
 
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    connected: !!global.connectedToTikTok,
+    connected: connectedToTikTok,
     username: TIKTOK_USERNAME || null
   });
 });
 
-// Manual test endpoint:
-// Open this in your browser after hosting:
-// https://YOUR-LINK.onrender.com/test
 app.get("/test", (_req, res) => {
   io.emit("alert", {
     type: "test",
     username: "Test User",
     message: "Victory Screech!"
   });
-  res.send("Test alert sent. Check TikTok LIVE Studio overlay.");
+  res.send("Test alert sent. Check TikTok LIVE Studio.");
 });
 
-function sendAlert(type, data = {}) {
-  const user =
+function pickEvent(exportName, fallbackName) {
+  return WebcastEvent?.[exportName] || fallbackName;
+}
+
+function getUsername(data = {}) {
+  return (
     data?.user?.uniqueId ||
+    data?.user?.nickname ||
     data?.uniqueId ||
     data?.nickname ||
-    data?.user?.nickname ||
-    "Someone";
+    "Someone"
+  );
+}
 
+function sendAlert(type, data = {}) {
+  const user = getUsername(data);
   console.log(`[ALERT] ${type}: ${user}`);
 
   io.emit("alert", {
@@ -55,53 +61,50 @@ function sendAlert(type, data = {}) {
 
 async function startTikTok() {
   if (!TIKTOK_USERNAME) {
-    console.log("No TIKTOK_USERNAME set yet. Add it in your hosting environment variables.");
+    console.log("No TIKTOK_USERNAME set. Add it in Render Environment Variables.");
     return;
   }
 
   const connection = new TikTokLiveConnection(TIKTOK_USERNAME, {});
 
-  connection.on(WebcastEvent.CONNECTED, () => {
-    global.connectedToTikTok = true;
+  connection.on(pickEvent("CONNECTED", "connected"), () => {
+    connectedToTikTok = true;
     console.log(`Connected to TikTok LIVE: @${TIKTOK_USERNAME}`);
   });
 
-  connection.on(WebcastEvent.DISCONNECTED, () => {
-    global.connectedToTikTok = false;
+  connection.on(pickEvent("DISCONNECTED", "disconnected"), () => {
+    connectedToTikTok = false;
     console.log("Disconnected from TikTok LIVE.");
   });
 
-  connection.on(WebcastEvent.ERROR, (err) => {
+  connection.on(pickEvent("ERROR", "error"), (err) => {
     console.error("TikTok connection error:", err?.message || err);
   });
 
-  // FOLLOW ALERT
-  connection.on(WebcastEvent.FOLLOW, (data) => {
+  connection.on(pickEvent("FOLLOW", "follow"), (data) => {
     sendAlert("follow", data);
   });
 
-  // SUBSCRIBER / SUPER FAN ALERT
-  // TikTok LIVE subscriptions often arrive as superFan events in this library.
-  // Keep both, so it catches "became a super fan" and "existing super fan joined".
-  connection.on(WebcastEvent.SUPER_FAN, (data) => {
-    sendAlert("subscriber", data);
-  });
+  const subscriberEvents = [
+    pickEvent("SUBSCRIBE", "subscribe"),
+    pickEvent("SUBSCRIPTION", "subscription"),
+    pickEvent("SUPER_FAN", "superFan"),
+    pickEvent("SUPER_FAN_JOIN", "superFanJoin")
+  ];
 
-  connection.on(WebcastEvent.SUPER_FAN_JOIN, (data) => {
-    sendAlert("subscriber", data);
-  });
-
-  // OPTIONAL: uncomment this while testing if you want every chat message to trigger it.
-  // connection.on(WebcastEvent.CHAT, (data) => {
-  //   sendAlert("chat", data);
-  // });
+  for (const eventName of subscriberEvents) {
+    if (!eventName) continue;
+    connection.on(eventName, (data) => {
+      sendAlert("subscriber", data);
+    });
+  }
 
   try {
     await connection.connect();
   } catch (err) {
-    global.connectedToTikTok = false;
+    connectedToTikTok = false;
     console.error("Failed to connect to TikTok LIVE:", err?.message || err);
-    console.error("Make sure the TikTok account is LIVE before testing.");
+    console.error("Make sure the TikTok account is LIVE before testing real follow/sub events.");
   }
 }
 
