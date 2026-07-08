@@ -15,6 +15,6 @@
     "tiktok-live-connector": "^2.0.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.0.0 <22.0.0"
   }
 }
