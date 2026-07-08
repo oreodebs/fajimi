@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SpongeBob TikTok LIVE Alert</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    #wrap {
+      opacity: 0;
+      transform: scale(0.5);
+      text-align: center;
+    }
+
+    #wrap.show {
+      animation: pop 3.2s ease-in-out forwards;
+    }
+
+    #gif {
+      width: min(78vw, 560px);
+      max-height: 85vh;
+      object-fit: contain;
+      filter: drop-shadow(0 18px 26px rgba(0,0,0,0.55));
+    }
+
+    #name {
+      margin-top: -18px;
+      font-size: clamp(28px, 5vw, 54px);
+      font-weight: 900;
+      color: white;
+      text-shadow:
+        0 4px 0 #000,
+        0 0 18px rgba(0,0,0,0.9);
+      -webkit-text-stroke: 2px black;
+    }
+
+    @keyframes pop {
+      0%   { opacity: 0; transform: scale(0.45) translateY(40px); }
+      12%  { opacity: 1; transform: scale(1.18) translateY(0); }
+      23%  { opacity: 1; transform: scale(1.00) translateY(0); }
+      82%  { opacity: 1; transform: scale(1.00) translateY(0); }
+      100% { opacity: 0; transform: scale(0.82) translateY(-30px); }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="wrap">
+    <img id="gif" src="/spongebob-victory.gif" alt="Victory Screech" />
+    <div id="name"></div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const wrap = document.getElementById("wrap");
+    const nameBox = document.getElementById("name");
+    const gif = document.getElementById("gif");
+
+    function replayGif() {
+      const src = gif.getAttribute("src");
+      gif.setAttribute("src", "");
+      gif.setAttribute("src", src + "?t=" + Date.now());
+    }
+
+    function showAlert(data) {
+      const username = data?.username || "New subscriber";
+      nameBox.textContent =
+        data?.type === "follow"
+          ? `${username} followed!`
+          : `${username} subscribed!`;
+
+      replayGif();
+
+      wrap.classList.remove("show");
+      void wrap.offsetWidth;
+      wrap.classList.add("show");
+    }
+
+    socket.on("connect", () => {
+      console.log("Overlay connected to alert server");
+    });
+
+    socket.on("alert", showAlert);
+
+    // Manual browser test:
+    // Add ?demo=1 to your URL and it will show automatically.
+    const params = new URLSearchParams(location.search);
+    if (params.get("demo") === "1") {
+      setTimeout(() => showAlert({ type: "subscriber", username: "Demo User" }), 800);
+    }
+  </script>
+</body>
+</html>
